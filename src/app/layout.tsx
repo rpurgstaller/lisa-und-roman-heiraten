@@ -13,8 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lisa & Roman heiraten",
-  description: "Die Hochzeitsseite von Lisa und Roman.",
+  title: {
+    default: "Lisa & Roman heiraten",
+    template: "%s | Lisa & Roman",
+  },
+  description:
+    "Alle Informationen zur Hochzeit von Lisa und Roman am 29. Mai 2027 auf Schloss Spielfeld.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

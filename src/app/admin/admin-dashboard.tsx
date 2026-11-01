@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser";
 import BarChart from "./bar-chart";
 import ActivityLog from "./activity-log";
+import SeatingPlan from "./seating-plan";
 import TablePagination, {
   getPageCount,
   getPageItems,
@@ -1828,7 +1829,7 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
               slices={dietaryDistribution}
             />
             <BarChart
-              title="Einladungen nach Von"
+              title="Einladungen Von"
               emptyMessage="Noch keine Einladungen für die Verteilung nach Von vorhanden."
               slices={guestFromDistribution}
             />
@@ -1836,11 +1837,7 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
         </div>
         ))}
       {activeTab === "activity" && <ActivityLog />}
-      {activeTab === "seating" && (
-        <p className="mt-10 text-[#657061]">
-          Die Sitzordnung ist noch nicht umgesetzt.
-        </p>
-      )}
+      {activeTab === "seating" && <SeatingPlan />}
     </AdminFrame>
   );
 }

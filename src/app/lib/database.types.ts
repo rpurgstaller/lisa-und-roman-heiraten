@@ -41,6 +41,38 @@ export type ResponseLogRow = {
   change: string;
 };
 
+export type SeatSide = "top" | "bottom" | "left" | "right";
+
+export type SeatingPlanRow = {
+  id: number;
+  name: string;
+  note: string | null;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type SeatingTableRow = {
+  id: number;
+  plan_id: number;
+  name: string | null;
+  grid_x: number;
+  grid_y: number;
+  length: number;
+  width: number;
+};
+
+export type HostId = "lisa" | "roman";
+
+export type SeatAssignmentRow = {
+  id: number;
+  plan_id: number;
+  guest_id: number | null;
+  host: HostId | null;
+  table_id: number;
+  side: SeatSide;
+  position: number;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -79,6 +111,44 @@ export type Database = {
           changed_at?: string;
         };
         Update: Partial<Omit<ResponseLogRow, "id">>;
+        Relationships: [];
+      };
+      seating_plan: {
+        Row: SeatingPlanRow;
+        Insert: {
+          name: string;
+          note?: string | null;
+          created_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: Partial<Omit<SeatingPlanRow, "id">>;
+        Relationships: [];
+      };
+      seating_table: {
+        Row: SeatingTableRow;
+        Insert: {
+          plan_id: number;
+          name?: string | null;
+          grid_x: number;
+          grid_y: number;
+          length: number;
+          width: number;
+        };
+        Update: Partial<Omit<SeatingTableRow, "id" | "plan_id">>;
+        Relationships: [
+          {
+            foreignKeyName: "seating_table_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "seating_plan";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      seat_assignment: {
+        Row: SeatAssignmentRow;
+        Insert: Omit<SeatAssignmentRow, "id">;
+        Update: Partial<SeatAssignmentRow>;
         Relationships: [];
       };
     };

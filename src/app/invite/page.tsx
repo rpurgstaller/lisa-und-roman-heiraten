@@ -1,8 +1,8 @@
 import { InvitationAccessForm } from "../invitation-access-form";
 import { getInvitationCode, SiteShell } from "../site-shell";
 
-export default async function EinladungPage(
-  props: PageProps<"/einladung">
+export default async function InvitePage(
+  props: PageProps<"/invite">
 ) {
   const invitationCode = await getInvitationCode(props.searchParams);
 

@@ -3,9 +3,9 @@ import { isInvitationCode } from "./lib/invitations";
 
 const navigation = [
   { href: "/", label: "Home" },
-  { href: "/ablauf", label: "Ablauf" },
-  { href: "/anreise", label: "Anreise" },
-  { href: "/einladung", label: "Einladung" },
+  { href: "/schedule", label: "Ablauf" },
+  { href: "/travel", label: "Anreise" },
+  { href: "/invite", label: "Einladung" },
 ] as const;
 
 export function SiteShell({
@@ -23,8 +23,8 @@ export function SiteShell({
       : undefined;
   const withInvitationCode = (href: string) =>
     normalizedCode
-      ? href === "/einladung"
-        ? `/einladung/${encodeURIComponent(normalizedCode)}`
+      ? href === "/invite"
+        ? `/invite/${encodeURIComponent(normalizedCode)}`
         : `${href}?code=${encodeURIComponent(normalizedCode)}`
       : href;
 

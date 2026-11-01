@@ -34,8 +34,8 @@ export default async function Home(props: PageProps<"/">) {
             <Link
               href={
                 invitationCode
-                  ? `/ablauf?code=${encodeURIComponent(invitationCode)}`
-                  : "/ablauf"
+                  ? `/schedule?code=${encodeURIComponent(invitationCode)}`
+                  : "/schedule"
               }
               className="mt-11 inline-flex border border-[#74816f] px-8 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#4d594a] transition-colors hover:bg-[#4d594a] hover:text-[#f8f5ef] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4d594a]"
             >

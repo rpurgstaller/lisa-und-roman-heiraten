@@ -7,7 +7,7 @@ const schedule = [
   ["23:00", "Disco"], ["00:00", "Mitternachtssnack"],
 ] as const;
 
-export default async function AblaufPage(props: PageProps<"/ablauf">) {
+export default async function SchedulePage(props: PageProps<"/schedule">) {
   const invitationCode = await getInvitationCode(props.searchParams);
 
   return (

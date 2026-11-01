@@ -9,7 +9,7 @@ const hotels = [
 
 const venueMapsUrl = "https://www.google.com/maps/search/?api=1&query=Schlossgasse%201%2C%208471%20Spielfeld";
 
-export default async function AnreisePage(props: PageProps<"/anreise">) {
+export default async function TravelPage(props: PageProps<"/travel">) {
   const invitationCode = await getInvitationCode(props.searchParams);
 
   return (

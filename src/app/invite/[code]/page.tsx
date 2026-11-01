@@ -4,7 +4,7 @@ import { getGuestDisplayName, findGuestByInvitationCode } from "../../lib/invita
 import { SiteShell } from "../../site-shell";
 
 export default async function InvitationPage(
-  props: PageProps<"/einladung/[code]">
+  props: PageProps<"/invite/[code]">
 ) {
   const { code } = await props.params;
   const result = await findGuestByInvitationCode(code);
@@ -26,7 +26,7 @@ export default async function InvitationPage(
                 : "Dieser Einladungslink ist ungültig. Bitte prüft, ob ihr den vollständigen Link geöffnet habt."}
             </p>
             <Link
-              href="/einladung"
+              href="/invite"
               className="mt-8 inline-flex border border-[#74816f] px-7 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#4d594a] transition-colors hover:bg-[#4d594a] hover:text-white"
             >
               Code erneut eingeben
@@ -73,7 +73,7 @@ export default async function InvitationPage(
             companionName={result.guest.companion_name}
           />
           <Link
-            href={`/ablauf?code=${encodeURIComponent(code)}`}
+            href={`/schedule?code=${encodeURIComponent(code)}`}
             className="mt-9 inline-flex border border-[#74816f] px-8 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#4d594a] transition-colors hover:bg-[#4d594a] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4d594a]"
           >
             Hochzeitsdetails ansehen

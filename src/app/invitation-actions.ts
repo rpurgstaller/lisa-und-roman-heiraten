@@ -49,7 +49,7 @@ export async function accessInvitation(
     };
   }
 
-  redirect(`/einladung/${invitationCode.trim().toLowerCase()}`);
+  redirect(`/invite/${invitationCode.trim().toLowerCase()}`);
 }
 
 export async function saveRsvp(
@@ -102,7 +102,7 @@ export async function saveRsvp(
   }
 
   // Die Seite neu rendern, damit das Formular die gespeicherten Werte als Standard erhält.
-  revalidatePath("/einladung/[code]", "page");
+  revalidatePath("/invite/[code]", "page");
 
   return {
     message: "Danke für eure Rückmeldung – eure Angaben wurden gespeichert.",

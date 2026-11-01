@@ -16,6 +16,27 @@ with new_invitation as (
     'Musterstraße', '1', null, '10115', 'Berlin', 'Deutschland'
   )
   returning id
+),
+primary_guest as (
+  insert into guest (
+    first_name,
+    last_name,
+    email,
+    invitation_id,
+    attending,
+    dietary_restrictions,
+    additional_dietary_restrictions
+  )
+  select
+    'Anna',
+    'Schmidt',
+    'anna.schmidt@example.com',
+    new_invitation.id,
+    true,
+    null,
+    null
+  from new_invitation
+  returning id, invitation_id
 )
 insert into guest (
   first_name,
@@ -25,18 +46,18 @@ insert into guest (
   attending,
   dietary_restrictions,
   additional_dietary_restrictions,
-  companion_name
+  companion_of_guest_id
 )
 select
-  'Anna',
+  'Lukas',
   'Schmidt',
-  'anna.schmidt@example.com',
-  new_invitation.id,
-  true,
+  null,
+  primary_guest.invitation_id,
   null,
   null,
-  'Lukas Schmidt'
-from new_invitation;
+  null,
+  primary_guest.id
+from primary_guest;
 
 with new_invitation as (
   insert into invitation (
@@ -64,8 +85,7 @@ insert into guest (
   invitation_id,
   attending,
   dietary_restrictions,
-  additional_dietary_restrictions,
-  companion_name
+  additional_dietary_restrictions
 )
 select
   'Michael',
@@ -74,8 +94,7 @@ select
   new_invitation.id,
   true,
   null,
-  'Gluten-free',
-  null
+  'Gluten-free'
 from new_invitation;
 
 with new_invitation as (
@@ -104,8 +123,7 @@ insert into guest (
   invitation_id,
   attending,
   dietary_restrictions,
-  additional_dietary_restrictions,
-  companion_name
+  additional_dietary_restrictions
 )
 select
   'Sophie',
@@ -113,7 +131,6 @@ select
   'sophie.wagner@example.com',
   new_invitation.id,
   false,
-  null,
   null,
   null
 from new_invitation;
@@ -136,6 +153,27 @@ with new_invitation as (
     'Testgasse', '3a', null, '1010', 'Wien', 'Österreich'
   )
   returning id
+),
+primary_guest as (
+  insert into guest (
+    first_name,
+    last_name,
+    email,
+    invitation_id,
+    attending,
+    dietary_restrictions,
+    additional_dietary_restrictions
+  )
+  select
+    'Daniel',
+    'Hofer',
+    'daniel.hofer@example.com',
+    new_invitation.id,
+    true,
+    null,
+    'No shellfish'
+  from new_invitation
+  returning id, invitation_id
 )
 insert into guest (
   first_name,
@@ -145,18 +183,18 @@ insert into guest (
   attending,
   dietary_restrictions,
   additional_dietary_restrictions,
-  companion_name
+  companion_of_guest_id
 )
 select
-  'Daniel',
+  'Julia',
   'Hofer',
-  'daniel.hofer@example.com',
-  new_invitation.id,
-  true,
   null,
-  'No shellfish',
-  'Julia Hofer'
-from new_invitation;
+  primary_guest.invitation_id,
+  null,
+  null,
+  null,
+  primary_guest.id
+from primary_guest;
 
 with new_invitation as (
   insert into invitation (
@@ -184,8 +222,7 @@ insert into guest (
   invitation_id,
   attending,
   dietary_restrictions,
-  additional_dietary_restrictions,
-  companion_name
+  additional_dietary_restrictions
 )
 select
   'Laura',
@@ -194,8 +231,7 @@ select
   new_invitation.id,
   true,
   'Vegan',
-  'Nut allergy',
-  null
+  'Nut allergy'
 from new_invitation;
 
 with new_invitation as (
@@ -216,6 +252,27 @@ with new_invitation as (
     'Dummystraße', '5', null, '8001', 'Zürich', 'Schweiz'
   )
   returning id
+),
+primary_guest as (
+  insert into guest (
+    first_name,
+    last_name,
+    email,
+    invitation_id,
+    attending,
+    dietary_restrictions,
+    additional_dietary_restrictions
+  )
+  select
+    'Thomas',
+    'Mayer',
+    'thomas.mayer@example.com',
+    new_invitation.id,
+    null,
+    null,
+    null
+  from new_invitation
+  returning id, invitation_id
 )
 insert into guest (
   first_name,
@@ -225,15 +282,15 @@ insert into guest (
   attending,
   dietary_restrictions,
   additional_dietary_restrictions,
-  companion_name
+  companion_of_guest_id
 )
 select
-  'Thomas',
+  'Elena',
   'Mayer',
-  'thomas.mayer@example.com',
-  new_invitation.id,
+  null,
+  primary_guest.invitation_id,
   null,
   null,
   null,
-  'Elena Mayer'
-from new_invitation;
+  primary_guest.id
+from primary_guest;

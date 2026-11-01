@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser";
 import BarChart from "./bar-chart";
 import ActivityLog from "./activity-log";
+import PostcardPrint from "./postcard-print";
 import SeatingPlan from "./seating-plan";
 import TablePagination, {
   getPageCount,
@@ -18,6 +19,7 @@ import type {
   DietaryRestriction,
   GuestFrom,
   GuestRow,
+  GuestType,
   InvitationAddress,
   InvitationCategory,
   InvitationRow,
@@ -25,11 +27,14 @@ import type {
 
 type GuestWithInvitation = GuestRow & {
   invitation: Pick<InvitationRow, "code"> | null;
+  companionName?: string | null;
 };
 
 type SortDirection = "asc" | "desc";
 type GuestSortColumn =
-  | "name"
+  | "firstName"
+  | "lastName"
+  | "guestType"
   | "email"
   | "attending"
   | "dietary"
@@ -60,15 +65,20 @@ type InvitationUpdate = Partial<
     | keyof InvitationAddress
   >
 >;
-type GuestUpdate = Partial<Pick<GuestRow, "dietary_restrictions">>;
-export type AdminTab = "guests" | "activity" | "seating";
+type GuestUpdate = Partial<
+  Pick<GuestRow, "first_name" | "last_name" | "dietary_restrictions" | "guest_type">
+>;
+export type AdminTab = "guests" | "activity" | "seating" | "postcards";
 const adminTabs: { id: AdminTab; label: string; href: string }[] = [
   { id: "guests", label: "Gästeverwaltung", href: "/admin/guests" },
   { id: "activity", label: "Aktivität", href: "/admin/activity" },
   { id: "seating", label: "Sitzordnung", href: "/admin/seating" },
+  { id: "postcards", label: "Postkarten", href: "/admin/postcards" },
 ];
 type GuestFilters = {
-  name: string;
+  firstName: string;
+  lastName: string;
+  guestType: OptionalFilter<GuestType>;
   email: string;
   attending: "all" | "open" | "yes" | "no";
   dietary: OptionalFilter<DietaryRestriction>;
@@ -102,6 +112,11 @@ function getBooleanFilter(value: string): BooleanFilter {
 }
 
 const guestFromOptions: GuestFrom[] = ["Roman", "Lisa"];
+const guestTypeOptions: { value: GuestType; label: string }[] = [
+  { value: "adult", label: "Erwachsener" },
+  { value: "child_with_meal", label: "Kind (mit Kinderessen)" },
+  { value: "child_without_meal", label: "Kind (ohne Kinderessen)" },
+];
 const dietaryRestrictionValues: DietaryRestriction[] =
   dietaryRestrictionOptions.map((option) => option.value);
 const categoryOptions: InvitationCategory[] = ["Freunde", "Arbeit", "Familie"];
@@ -210,8 +225,12 @@ function getGuestSortValue(
   column: GuestSortColumn
 ): string | number {
   switch (column) {
-    case "name":
-      return [guest.first_name, guest.last_name].filter(Boolean).join(" ");
+    case "firstName":
+      return guest.first_name ?? "";
+    case "lastName":
+      return guest.last_name ?? "";
+    case "guestType":
+      return getGuestTypeLabel(guest.guest_type);
     case "email":
       return guest.email ?? "";
     case "attending":
@@ -223,10 +242,14 @@ function getGuestSortValue(
     case "additionalDietary":
       return guest.additional_dietary_restrictions ?? "";
     case "companion":
-      return guest.companion_name ?? "";
+      return guest.companionName ?? "";
     case "code":
       return guest.invitation?.code ?? "";
   }
+}
+
+function getGuestTypeLabel(value: GuestType): string {
+  return guestTypeOptions.find((option) => option.value === value)?.label ?? value;
 }
 
 function getDietaryRestrictionLabel(
@@ -447,9 +470,11 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
   const [updatingInvitationId, setUpdatingInvitationId] = useState<number | null>(null);
   const [updatingGuestId, setUpdatingGuestId] = useState<number | null>(null);
   const [guestFilters, setGuestFiltersState] = useState<GuestFilters>({
-    name: "",
+    firstName: "",
+    lastName: "",
     email: "",
     attending: "all",
+    guestType: "all",
     dietary: "all",
     additionalDietary: "",
     companion: "",
@@ -473,7 +498,7 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
   const [guestSort, setGuestSort] = useState<{
     column: GuestSortColumn;
     direction: SortDirection;
-  }>({ column: "name", direction: "asc" });
+  }>({ column: "firstName", direction: "asc" });
   const [invitationSort, setInvitationSort] = useState<{
     column: InvitationSortColumn;
     direction: SortDirection;
@@ -548,7 +573,22 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
         return;
       }
 
-      setGuests(guestData ?? []);
+      const companionNames = new Map<number, string>();
+      for (const guest of guestData ?? []) {
+        if (guest.companion_of_guest_id !== null) {
+          companionNames.set(
+            guest.companion_of_guest_id,
+            [guest.first_name, guest.last_name].filter(Boolean).join(" ")
+          );
+        }
+      }
+
+      setGuests(
+        (guestData ?? []).map((guest) => ({
+          ...guest,
+          companionName: companionNames.get(guest.id) ?? null,
+        }))
+      );
       setInvitations(invitationData ?? []);
       setLoading(false);
     }
@@ -637,9 +677,17 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
       .select("*")
       .single();
 
+    const isNameChange = "first_name" in changes || "last_name" in changes;
+    const isGuestTypeChange = "guest_type" in changes;
+    const guestLabel = [guest.first_name, guest.last_name].filter(Boolean).join(" ") || "Gast";
+
     if (error || !data) {
       setErrorMessage(
-        "Die Ernährungsweise konnte nicht gespeichert werden. Bitte prüfe deine Verbindung und versuche es erneut."
+        isNameChange
+          ? "Der Name konnte nicht gespeichert werden. Bitte prüfe deine Verbindung und versuche es erneut."
+          : isGuestTypeChange
+            ? "Die Gastart konnte nicht gespeichert werden. Bitte prüfe deine Verbindung und versuche es erneut."
+            : "Die Ernährungsweise konnte nicht gespeichert werden. Bitte prüfe deine Verbindung und versuche es erneut."
       );
       setUpdatingGuestId(null);
       return false;
@@ -651,10 +699,36 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
       )
     );
     setSuccessMessage(
-      `Ernährungsweise von ${[guest.first_name, guest.last_name].filter(Boolean).join(" ")} wurde aktualisiert.`
+      isNameChange
+        ? `Name wurde auf ${[data.first_name, data.last_name].filter(Boolean).join(" ")} aktualisiert.`
+        : isGuestTypeChange
+          ? `Gastart von ${guestLabel} wurde auf ${getGuestTypeLabel(data.guest_type)} aktualisiert.`
+          : `Ernährungsweise von ${guestLabel} wurde aktualisiert.`
     );
     setUpdatingGuestId(null);
     return true;
+  }
+
+  function renderGuestNameField(guest: GuestWithInvitation, key: "first_name" | "last_name") {
+    const label = key === "first_name" ? "Vorname" : "Nachname";
+    return (
+      <EditableTextField
+        label={`${label} von ${[guest.first_name, guest.last_name].filter(Boolean).join(" ") || "Gast"}`}
+        value={guest[key]}
+        maxLength={100}
+        disabled={updatingGuestId !== null}
+        onSave={(value) => {
+          if (value === null) {
+            setErrorMessage(`Der ${label} darf nicht leer sein.`);
+            return Promise.resolve(false);
+          }
+          return handleUpdateGuest(
+            guest,
+            key === "first_name" ? { first_name: value } : { last_name: value }
+          );
+        }}
+      />
+    );
   }
 
   async function handleCreateGuest(event: FormEvent<HTMLFormElement>) {
@@ -716,7 +790,7 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
         attending: null,
         dietary_restrictions: null,
         additional_dietary_restrictions: null,
-        companion_name: null,
+        guest_type: "adult",
       })
       .select("*")
       .single();
@@ -909,22 +983,21 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
   );
   const visibleGuests = guests
     .filter((guest) => {
-      const guestName = [guest.first_name, guest.last_name]
-        .filter(Boolean)
-        .join(" ");
       return (
         visibleInvitationIds.has(guest.invitation_id) &&
-        normalizeSearch(guestName).includes(normalizeSearch(guestFilters.name)) &&
+        normalizeSearch(guest.first_name).includes(normalizeSearch(guestFilters.firstName)) &&
+        normalizeSearch(guest.last_name).includes(normalizeSearch(guestFilters.lastName)) &&
         normalizeSearch(guest.email).includes(normalizeSearch(guestFilters.email)) &&
         (guestFilters.attending === "all" ||
           (guestFilters.attending === "open" && guest.attending === null) ||
           (guestFilters.attending === "yes" && guest.attending === true) ||
           (guestFilters.attending === "no" && guest.attending === false)) &&
+        matchesOptionalFilter(guestFilters.guestType, guest.guest_type) &&
         matchesOptionalFilter(guestFilters.dietary, guest.dietary_restrictions) &&
         normalizeSearch(guest.additional_dietary_restrictions).includes(
           normalizeSearch(guestFilters.additionalDietary)
         ) &&
-        normalizeSearch(guest.companion_name).includes(
+        normalizeSearch(guest.companionName ?? null).includes(
           normalizeSearch(guestFilters.companion)
         ) &&
         normalizeSearch(guest.invitation?.code).includes(
@@ -1577,24 +1650,72 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
                 <thead className="border-b border-[#c8cfc2] text-xs uppercase tracking-[0.12em] text-[#7b876f]">
                   <tr>
                     <SortableHeader
-                      label="Name"
-                      active={guestSort.column === "name"}
+                      label="Vorname"
+                      active={guestSort.column === "firstName"}
                       direction={guestSort.direction}
-                      onSort={() => toggleGuestSort("name")}
+                      onSort={() => toggleGuestSort("firstName")}
                     >
                       <input
                         type="search"
-                        value={guestFilters.name}
+                        value={guestFilters.firstName}
                         onChange={(event) =>
                           setGuestFilters((current) => ({
                             ...current,
-                            name: event.target.value,
+                            firstName: event.target.value,
                           }))
                         }
-                        aria-label="Gäste nach Name filtern"
+                        aria-label="Gäste nach Vorname filtern"
                         placeholder="Filtern"
                         className={inputClassName}
                       />
+                    </SortableHeader>
+                    <SortableHeader
+                      label="Nachname"
+                      active={guestSort.column === "lastName"}
+                      direction={guestSort.direction}
+                      onSort={() => toggleGuestSort("lastName")}
+                    >
+                      <input
+                        type="search"
+                        value={guestFilters.lastName}
+                        onChange={(event) =>
+                          setGuestFilters((current) => ({
+                            ...current,
+                            lastName: event.target.value,
+                          }))
+                        }
+                        aria-label="Gäste nach Nachname filtern"
+                        placeholder="Filtern"
+                        className={inputClassName}
+                      />
+                    </SortableHeader>
+                    <SortableHeader
+                      label="Gastart"
+                      active={guestSort.column === "guestType"}
+                      direction={guestSort.direction}
+                      onSort={() => toggleGuestSort("guestType")}
+                    >
+                      <select
+                        value={guestFilters.guestType}
+                        onChange={(event) =>
+                          setGuestFilters((current) => ({
+                            ...current,
+                            guestType: getOptionalFilter(
+                              event.target.value,
+                              guestTypeOptions.map((option) => option.value)
+                            ),
+                          }))
+                        }
+                        aria-label="Gäste nach Gastart filtern"
+                        className={inputClassName}
+                      >
+                        <option value="all">Alle</option>
+                        {guestTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </SortableHeader>
                     <SortableHeader
                       label="E-Mail"
@@ -1734,9 +1855,32 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
                   {pagedGuests.map((guest) => (
                     <tr key={guest.id}>
                       <td className="px-4 py-3">
-                        {[guest.first_name, guest.last_name]
-                          .filter(Boolean)
-                          .join(" ") || "—"}
+                        {renderGuestNameField(guest, "first_name")}
+                      </td>
+                      <td className="px-4 py-3">
+                        {renderGuestNameField(guest, "last_name")}
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={guest.guest_type}
+                          disabled={updatingGuestId !== null}
+                          onChange={(event) =>
+                            void handleUpdateGuest(guest, {
+                              guest_type: parseOption(
+                                guestTypeOptions.map((option) => option.value),
+                                event.target.value
+                              ) ?? guest.guest_type,
+                            })
+                          }
+                          aria-label={`Gastart für ${[guest.first_name, guest.last_name].filter(Boolean).join(" ") || "Gast"}`}
+                          className={cellSelectClassName}
+                        >
+                          {guestTypeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-4 py-3">{guest.email ?? "—"}</td>
                       <td className="px-4 py-3">
@@ -1773,7 +1917,7 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
                         {guest.additional_dietary_restrictions ?? "—"}
                       </td>
                       <td className="px-4 py-3">
-                        {guest.companion_name ?? "—"}
+                        {guest.companionName ?? "—"}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">
                         {guest.invitation?.code ?? "—"}
@@ -1838,6 +1982,7 @@ export default function AdminDashboard({ activeTab }: { activeTab: AdminTab }) {
         ))}
       {activeTab === "activity" && <ActivityLog />}
       {activeTab === "seating" && <SeatingPlan />}
+      {activeTab === "postcards" && <PostcardPrint />}
     </AdminFrame>
   );
 }

@@ -27,3 +27,41 @@ html {
     scroll-behavior: auto;
   }
 }
+
+@media print {
+  @page {
+    size: 148mm 105mm;
+    margin: 0;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .postcard-print-area,
+  .postcard-print-area * {
+    visibility: visible;
+  }
+
+  .postcard-print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  .postcard {
+    width: 148mm;
+    height: 105mm;
+    max-width: none;
+    aspect-ratio: auto;
+    border: 0;
+    box-shadow: none;
+    break-before: page;
+  }
+
+  .postcard-print-area[data-print-side="front"] .postcard-back,
+  .postcard-print-area[data-print-side="back"] .postcard-front {
+    display: none;
+  }
+}

@@ -8,11 +8,16 @@ export type InvitationGuest = {
   attending: boolean | null;
   dietary_restrictions: DietaryRestriction | null;
   additional_dietary_restrictions: string | null;
-  companion_name: string | null;
+  companion_of_guest_id: number | null;
+};
+
+export type Invitation = {
+  guests: InvitationGuest[];
+  message: string | null;
 };
 
 type InvitationLookupResult =
-  | { status: "found"; guest: InvitationGuest }
+  | { status: "found"; invitation: Invitation }
   | { status: "not-found" }
   | { status: "error" };
 
@@ -22,31 +27,43 @@ export function isInvitationCode(value: string): boolean {
   return invitationCodePattern.test(value.trim());
 }
 
-export async function findGuestByInvitationCode(
+export async function findInvitationByCode(
   code: string
 ): Promise<InvitationLookupResult> {
   if (!isInvitationCode(code)) {
     return { status: "not-found" };
   }
 
-  const { data, error } = await supabase
-    .rpc("get_guest_by_invitation_code", {
-      provided_code: code.trim().toLowerCase(),
-    });
+  const normalizedCode = code.trim().toLowerCase();
+  const [guestsResult, messageResult] = await Promise.all([
+    supabase.rpc("get_guests_by_invitation_code", {
+      provided_code: normalizedCode,
+    }),
+    supabase.rpc("get_invitation_message", {
+      provided_code: normalizedCode,
+    }),
+  ]);
 
-  if (error) {
+  if (guestsResult.error || messageResult.error) {
     return { status: "error" };
   }
 
-  const guest = data?.[0];
+  const guests = guestsResult.data ?? [];
 
-  return guest ? { status: "found", guest } : { status: "not-found" };
+  if (guests.length === 0) {
+    return { status: "not-found" };
+  }
+
+  return {
+    status: "found",
+    invitation: { guests, message: messageResult.data ?? null },
+  };
 }
 
-export function getGuestDisplayName(guest: InvitationGuest): string {
-  const displayName = [guest.first_name, guest.last_name]
-    .filter((name): name is string => Boolean(name?.trim()))
-    .join(" ");
+export function getPrimaryGuests(guests: InvitationGuest[]): InvitationGuest[] {
+  return guests.filter((guest) => guest.companion_of_guest_id === null);
+}
 
-  return displayName || "lieber Gast";
+export function getCompanion(guests: InvitationGuest[]): InvitationGuest | null {
+  return guests.find((guest) => guest.companion_of_guest_id !== null) ?? null;
 }

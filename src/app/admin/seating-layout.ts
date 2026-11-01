@@ -169,6 +169,26 @@ export function parseParticipantKey(key: string): ParticipantRef | null {
   return null;
 }
 
+// Versatz vom Tisch-Ursprung zur gegriffenen Körperzelle, damit der Tisch unter dem Cursor bleibt.
+export type TableDragPayload = { tableId: number; offsetX: number; offsetY: number };
+
+export function getTableDragKey(tableId: number, offsetX: number, offsetY: number): string {
+  return `table:${tableId}:${offsetX}:${offsetY}`;
+}
+
+export function parseTableDragKey(key: string): TableDragPayload | null {
+  const [kind, id, offsetX, offsetY] = key.split(":");
+  if (kind !== "table") {
+    return null;
+  }
+  const tableId = Number(id);
+  const x = Number(offsetX);
+  const y = Number(offsetY);
+  return Number.isInteger(tableId) && tableId > 0 && Number.isInteger(x) && x >= 0 && Number.isInteger(y) && y >= 0
+    ? { tableId, offsetX: x, offsetY: y }
+    : null;
+}
+
 export function getParticipantName(
   ref: ParticipantRef,
   guestsById: Map<number, GuestRow>,

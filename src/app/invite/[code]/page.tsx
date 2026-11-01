@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { RsvpForm } from "../../rsvp-form";
-import { getGuestDisplayName, findGuestByInvitationCode } from "../../lib/invitations";
+import {
+  findInvitationByCode,
+  getCompanion,
+  getPrimaryGuests,
+} from "../../lib/invitations";
+import { getInvitationDisplayName } from "../../lib/rsvp-fields";
 import { SiteShell } from "../../site-shell";
 
 export default async function InvitationPage(
   props: PageProps<"/invite/[code]">
 ) {
   const { code } = await props.params;
-  const result = await findGuestByInvitationCode(code);
+  const result = await findInvitationByCode(code);
 
   if (result.status !== "found") {
     return (
@@ -37,7 +42,8 @@ export default async function InvitationPage(
     );
   }
 
-  const guestName = getGuestDisplayName(result.guest);
+  const primaryGuests = getPrimaryGuests(result.invitation.guests);
+  const guestName = getInvitationDisplayName(primaryGuests);
 
   return (
     <SiteShell invitationCode={code}>
@@ -65,12 +71,9 @@ export default async function InvitationPage(
           </p>
           <RsvpForm
             code={code}
-            attending={result.guest.attending}
-            dietaryRestrictions={result.guest.dietary_restrictions}
-            additionalDietaryRestrictions={
-              result.guest.additional_dietary_restrictions
-            }
-            companionName={result.guest.companion_name}
+            guests={primaryGuests}
+            companion={getCompanion(result.invitation.guests)}
+            message={result.invitation.message}
           />
           <Link
             href={`/schedule?code=${encodeURIComponent(code)}`}

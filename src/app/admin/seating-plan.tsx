@@ -466,6 +466,47 @@ export default function SeatingPlan() {
     }
   }
 
+  async function moveTable(tableId: number, gridX: number, gridY: number) {
+    const table = tables.find((entry) => entry.id === tableId);
+    if (!table || selectedPlanId === null || busy) {
+      return;
+    }
+    if (table.grid_x === gridX && table.grid_y === gridY) {
+      return;
+    }
+
+    const moved = { grid_x: gridX, grid_y: gridY, length: table.length, width: table.width };
+    const otherTables = tables.filter((other) => other.id !== table.id);
+    if (!isFootprintFree(moved, otherTables)) {
+      setMessage({
+        type: "error",
+        text: "Hier passt der Tisch nicht hin. Wähle eine Stelle, an der Tisch und Sitzplätze frei sind.",
+      });
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const planId = selectedPlanId;
+    const index = tables.findIndex((entry) => entry.id === table.id);
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { error } = await supabase
+        .from("seating_table")
+        .update({ grid_x: gridX, grid_y: gridY })
+        .eq("id", table.id);
+      if (error) {
+        setMessage({ type: "error", text: getErrorMessage(error) });
+        await refreshDetails(planId);
+        return;
+      }
+      await refreshDetails(planId);
+      setMessage({ type: "success", text: `„${getTableLabel(table, index)}“ wurde verschoben.` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function startEditTable(table: SeatingTableRow) {
     setTableEdit({ tableId: table.id, length: String(table.length), width: String(table.width) });
     setMessage(null);
@@ -933,7 +974,7 @@ export default function SeatingPlan() {
               </p>
             </div>
             <p className="text-xs text-[#596656]">
-                Person aus der Liste auswählen oder ziehen und dann auf einen freien Platz setzen. Ein belegter Platz entfernt die Person wieder.
+                Person aus der Liste auswählen oder ziehen und dann auf einen freien Platz setzen. Ein belegter Platz entfernt die Person wieder. Tische lassen sich am Tisch selbst (grau-grüne Fläche) per Drag and Drop verschieben.
             </p>
             <div className="grid gap-6 lg:grid-cols-[minmax(16rem,1fr)_minmax(0,2fr)] lg:items-start">
               <SeatingGuestList
@@ -957,6 +998,7 @@ export default function SeatingPlan() {
                   onDropParticipant={(participantKey, tableId, side, position) =>
                     void seatParticipant(participantKey, tableId, side, position)
                 }
+                onMoveTable={(tableId, gridX, gridY) => void moveTable(tableId, gridX, gridY)}
                 busy={busy}
               />
             </div>

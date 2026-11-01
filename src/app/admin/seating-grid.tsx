@@ -11,8 +11,11 @@ import {
   cellKey,
   getParticipantInitials,
   getParticipantName,
+  getTableDragKey,
   parseParticipantKey,
+  parseTableDragKey,
   seatKey,
+  type CellOwner,
   type GridCell,
   type ParticipantRef,
 } from "./seating-layout";
@@ -41,6 +44,7 @@ type SeatingGridProps = {
     side: SeatAssignmentRow["side"],
     position: number,
   ) => void;
+  onMoveTable: (tableId: number, gridX: number, gridY: number) => void;
   busy: boolean;
 };
 
@@ -57,17 +61,45 @@ export default function SeatingGrid({
   onSeatClick,
   onRemoveSeat,
   onDropParticipant,
+  onMoveTable,
   busy,
 }: SeatingGridProps) {
   const owners = buildCellOwners(tables);
   const labelCells = new Map<string, { short: string }>();
   const tableLabels = new Map<number, string>();
+  const tablesById = new Map<number, SeatingTableRow>();
   tables.forEach((table, index) => {
     labelCells.set(cellKey(table.grid_x + 1, table.grid_y + 1), {
       short: String(index + 1),
     });
     tableLabels.set(table.id, getTableLabel(table, index));
+    tablesById.set(table.id, table);
   });
+
+  // Ein Tisch wird am Körperfeld gegriffen. Das Ziel ist die Zelle, auf die gezogen wird, minus diesen Versatz.
+  function handleDrop(payload: string, cell: GridCell, owner: CellOwner | undefined) {
+    const tableDrag = parseTableDragKey(payload);
+    if (tableDrag) {
+      onMoveTable(tableDrag.tableId, cell.x - tableDrag.offsetX, cell.y - tableDrag.offsetY);
+      return;
+    }
+    if (owner?.kind === "seat" && parseParticipantKey(payload)) {
+      onDropParticipant(payload, owner.tableId, owner.side, owner.position);
+    }
+  }
+
+  function getDropProps(cell: GridCell, owner: CellOwner | undefined) {
+    return {
+      onDragOver: (event: DragEvent<HTMLElement>) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      },
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        event.preventDefault();
+        handleDrop(event.dataTransfer.getData("text/plain"), cell, owner);
+      },
+    };
+  }
 
   const seatedBySeat = new Map<string, ParticipantRef>();
   for (const assignment of assignments) {
@@ -83,6 +115,7 @@ export default function SeatingGrid({
     for (let x = 0; x < GRID_COLUMNS; x++) {
       const key = cellKey(x, y);
       const cell = { x, y };
+      const owner = owners.get(key);
 
       if (isPlacing) {
         const isPreview = previewCells.has(key);
@@ -111,8 +144,6 @@ export default function SeatingGrid({
         continue;
       }
 
-      const owner = owners.get(key);
-
       if (owner?.kind === "seat") {
         const seatedBy = seatedBySeat.get(seatKey(owner.tableId, owner.side, owner.position));
         const tableLabel = tableLabels.get(owner.tableId) ?? "Tisch";
@@ -120,7 +151,7 @@ export default function SeatingGrid({
         if (seatedBy) {
           const name = getParticipantName(seatedBy, guestsById);
           cells.push(
-            <div key={key} className="flex items-center justify-center border border-transparent">
+            <div key={key} {...getDropProps(cell, owner)} className="flex items-center justify-center border border-transparent">
               <button
                 type="button"
                 disabled={busy}
@@ -135,22 +166,11 @@ export default function SeatingGrid({
           );
         } else {
           cells.push(
-            <div key={key} className="flex items-center justify-center border border-transparent">
+            <div key={key} {...getDropProps(cell, owner)} className="flex items-center justify-center border border-transparent">
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => onSeatClick(owner.tableId, owner.side, owner.position)}
-                onDragOver={(event: DragEvent<HTMLButtonElement>) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(event: DragEvent<HTMLButtonElement>) => {
-                  event.preventDefault();
-                  const participantKey = event.dataTransfer.getData("text/plain");
-                  if (parseParticipantKey(participantKey)) {
-                    onDropParticipant(participantKey, owner.tableId, owner.side, owner.position);
-                  }
-                }}
                 title={tableLabel}
                 aria-label={
                   selectedKey !== null
@@ -173,11 +193,24 @@ export default function SeatingGrid({
 
       if (owner?.kind === "body") {
         const label = labelCells.get(key);
+        const table = tablesById.get(owner.tableId);
         cells.push(
           <div
             key={key}
-            title={tableLabels.get(owner.tableId)}
-            className="flex items-start justify-start border border-[#aab5a3] bg-[#eef2ea] p-0.5 text-[10px] font-semibold leading-none text-[#4d594a]"
+            {...getDropProps(cell, owner)}
+            draggable={!busy && table !== undefined}
+            onDragStart={(event) => {
+              if (!table) {
+                return;
+              }
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData(
+                "text/plain",
+                getTableDragKey(table.id, x - table.grid_x, y - table.grid_y),
+              );
+            }}
+            title={`${tableLabels.get(owner.tableId) ?? "Tisch"} verschieben`}
+            className="flex cursor-grab items-start justify-start border border-[#aab5a3] bg-[#eef2ea] p-0.5 text-[10px] font-semibold leading-none text-[#4d594a] active:cursor-grabbing"
           >
             {label?.short ?? null}
           </div>,
@@ -185,7 +218,7 @@ export default function SeatingGrid({
         continue;
       }
 
-      cells.push(<div key={key} className="border border-[#f0f3ed]" />);
+      cells.push(<div key={key} {...getDropProps(cell, owner)} className="border border-[#f0f3ed]" />);
     }
   }
 

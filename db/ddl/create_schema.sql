@@ -53,7 +53,11 @@ create table invitation (
 
   city text,
 
-  country text
+  country text,
+
+  message text
+    constraint invitation_message_check
+    check (message is null or char_length(message) <= 1000)
 );
 
 alter table invitation enable row level security;
@@ -74,16 +78,27 @@ create table guest (
 
   additional_dietary_restrictions text,
 
-  companion_name text,
+  guest_type text not null default 'adult'
+    constraint guest_type_check
+    check (guest_type in ('adult', 'child_with_meal', 'child_without_meal')),
+
+  -- Begleitperson: eigene guest-Zeile, die auf die Hauptperson der Einladung verweist.
+  companion_of_guest_id bigint
+    references guest(id) on delete cascade,
 
   created_at timestamp default now()
 );
 
+-- Jede Hauptperson hat höchstens eine Begleitperson.
+create unique index guest_companion_of_guest_id_key on guest(companion_of_guest_id);
+
 alter table guest enable row level security;
 
 drop function if exists get_guest_by_invitation_code(text);
+drop function if exists update_guest_rsvp(text, boolean, text, text, text);
+drop function if exists update_guest_rsvp(text, boolean, text, text, text, text);
 
-create or replace function get_guest_by_invitation_code(provided_code text)
+create or replace function get_guests_by_invitation_code(provided_code text)
 returns table (
   id bigint,
   first_name text,
@@ -91,7 +106,7 @@ returns table (
   attending boolean,
   dietary_restrictions text,
   additional_dietary_restrictions text,
-  companion_name text
+  companion_of_guest_id bigint
 )
 language sql
 security definer
@@ -105,55 +120,171 @@ as $$
     guest.attending,
     guest.dietary_restrictions,
     guest.additional_dietary_restrictions,
-    guest.companion_name
+    guest.companion_of_guest_id
   from guest
   inner join invitation on invitation.id = guest.invitation_id
   where invitation.code = lower(trim(provided_code))
     and provided_code ~* '^[abcdefghjkmnpqrstvwxyz23456789]{8}$'
-  limit 1;
+  order by guest.companion_of_guest_id nulls first, guest.id;
 $$;
 
-revoke all on function get_guest_by_invitation_code(text) from public;
-grant execute on function get_guest_by_invitation_code(text) to anon, authenticated;
+revoke all on function get_guests_by_invitation_code(text) from public;
+grant execute on function get_guests_by_invitation_code(text) to anon, authenticated;
 
-drop function if exists update_guest_rsvp(text, boolean, text, text, text);
-drop function if exists update_guest_rsvp(text, boolean, text, text, text, text);
+create or replace function get_invitation_message(provided_code text)
+returns text
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select invitation.message
+  from invitation
+  where invitation.code = lower(trim(provided_code))
+    and provided_code ~* '^[abcdefghjkmnpqrstvwxyz23456789]{8}$';
+$$;
 
-create or replace function update_guest_rsvp(
+revoke all on function get_invitation_message(text) from public;
+grant execute on function get_invitation_message(text) to anon, authenticated;
+
+-- Speichert die Rückmeldung einer Einladung in einer Transaktion.
+-- provided_guests: Hauptpersonen mit id, attending, dietary_restrictions, additional_dietary_restrictions.
+-- provided_companion: null (keine Änderung), ohne id (neue Begleitperson anlegen) oder mit id (bestehende aktualisieren).
+-- provided_remove_companion_id: Begleitperson entfernen.
+create or replace function save_invitation_rsvp(
   provided_code text,
-  provided_attending boolean,
-  provided_dietary_restrictions text default null,
-  provided_companion_name text default null,
-  provided_additional_dietary_restrictions text default null
+  provided_guests jsonb,
+  provided_companion jsonb default null,
+  provided_remove_companion_id bigint default null,
+  provided_message text default null
 )
 returns boolean
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  current_invitation_id bigint;
+  guest_entry jsonb;
+  primary_guest_id bigint;
+  primary_count integer;
+  companion_count integer;
 begin
   if provided_code is null
-    or provided_code !~* '^[abcdefghjkmnpqrstvwxyz23456789]{8}$'
+    or trim(provided_code) !~* '^[abcdefghjkmnpqrstvwxyz23456789]{8}$'
   then
-    return false;
+    raise exception 'invalid_code';
   end if;
 
-  update guest
-  set
-    attending = provided_attending,
-    dietary_restrictions = nullif(trim(provided_dietary_restrictions), ''),
-    additional_dietary_restrictions = nullif(trim(provided_additional_dietary_restrictions), ''),
-    companion_name = nullif(trim(provided_companion_name), '')
+  select invitation.id
+  into current_invitation_id
   from invitation
-  where guest.invitation_id = invitation.id
-    and invitation.code = lower(trim(provided_code));
+  where invitation.code = lower(trim(provided_code));
 
-  return found;
+  if current_invitation_id is null then
+    raise exception 'invalid_code';
+  end if;
+
+  if provided_guests is null or jsonb_typeof(provided_guests) <> 'array' then
+    raise exception 'invalid_guest';
+  end if;
+
+  for guest_entry in select value from jsonb_array_elements(provided_guests) loop
+    update guest
+    set
+      attending = (guest_entry ->> 'attending')::boolean,
+      dietary_restrictions = nullif(trim(guest_entry ->> 'dietary_restrictions'), ''),
+      additional_dietary_restrictions = nullif(trim(guest_entry ->> 'additional_dietary_restrictions'), '')
+    where guest.id = (guest_entry ->> 'id')::bigint
+      and guest.invitation_id = current_invitation_id
+      and guest.companion_of_guest_id is null;
+
+    if not found then
+      raise exception 'invalid_guest';
+    end if;
+  end loop;
+
+  if provided_remove_companion_id is not null then
+    delete from guest
+    where guest.id = provided_remove_companion_id
+      and guest.invitation_id = current_invitation_id
+      and guest.companion_of_guest_id is not null;
+
+    if not found then
+      raise exception 'invalid_companion';
+    end if;
+  end if;
+
+  if provided_companion is not null then
+    if provided_companion ->> 'id' is null then
+      select count(*)
+      into primary_count
+      from guest
+      where guest.invitation_id = current_invitation_id
+        and guest.companion_of_guest_id is null;
+
+      select count(*)
+      into companion_count
+      from guest
+      where guest.invitation_id = current_invitation_id
+        and guest.companion_of_guest_id is not null;
+
+      if primary_count <> 1 or companion_count > 0 then
+        raise exception 'companion_not_allowed';
+      end if;
+
+      select guest.id
+      into primary_guest_id
+      from guest
+      where guest.invitation_id = current_invitation_id
+        and guest.companion_of_guest_id is null;
+
+      insert into guest (
+        first_name,
+        last_name,
+        invitation_id,
+        companion_of_guest_id,
+        attending,
+        dietary_restrictions,
+        additional_dietary_restrictions
+      )
+      values (
+        nullif(trim(provided_companion ->> 'first_name'), ''),
+        nullif(trim(provided_companion ->> 'last_name'), ''),
+        current_invitation_id,
+        primary_guest_id,
+        (provided_companion ->> 'attending')::boolean,
+        nullif(trim(provided_companion ->> 'dietary_restrictions'), ''),
+        nullif(trim(provided_companion ->> 'additional_dietary_restrictions'), '')
+      );
+    else
+      update guest
+      set
+        first_name = nullif(trim(provided_companion ->> 'first_name'), ''),
+        last_name = nullif(trim(provided_companion ->> 'last_name'), ''),
+        attending = (provided_companion ->> 'attending')::boolean,
+        dietary_restrictions = nullif(trim(provided_companion ->> 'dietary_restrictions'), ''),
+        additional_dietary_restrictions = nullif(trim(provided_companion ->> 'additional_dietary_restrictions'), '')
+      where guest.id = (provided_companion ->> 'id')::bigint
+        and guest.invitation_id = current_invitation_id
+        and guest.companion_of_guest_id is not null;
+
+      if not found then
+        raise exception 'invalid_companion';
+      end if;
+    end if;
+  end if;
+
+  update invitation
+  set message = nullif(trim(provided_message), '')
+  where invitation.id = current_invitation_id;
+
+  return true;
 end;
 $$;
 
-revoke all on function update_guest_rsvp(text, boolean, text, text, text) from public;
-grant execute on function update_guest_rsvp(text, boolean, text, text, text) to anon, authenticated;
+revoke all on function save_invitation_rsvp(text, jsonb, jsonb, bigint, text) from public;
+grant execute on function save_invitation_rsvp(text, jsonb, jsonb, bigint, text) to anon, authenticated;
 
 -- Protokoll aller Änderungen an invitation und guest. Wird durch Trigger befüllt.
 create table response_log (
@@ -397,8 +528,7 @@ revoke all on seating_plan, seating_table, seat_assignment from public, anon, au
 
 grant select, insert, update on seating_plan to authenticated;
 grant select, insert, delete on seating_table to authenticated;
-grant update (length, width) on seating_table to authenticated;
-grant select, insert, update, delete on seat_assignment to authenticated;
+grant update (length, width, grid_x, grid_y) on seating_table to authenticated;
 
 grant usage on sequence seating_plan_id_seq, seating_table_id_seq, seat_assignment_id_seq to authenticated;
 

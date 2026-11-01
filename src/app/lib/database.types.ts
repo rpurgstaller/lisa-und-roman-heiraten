@@ -1,6 +1,7 @@
 export type GuestFrom = "Roman" | "Lisa";
 export type InvitationCategory = "Freunde" | "Arbeit" | "Familie";
 export type DietaryRestriction = "Vegetarian" | "Vegan" | "Lactose intolerant";
+export type GuestType = "adult" | "child_with_meal" | "child_without_meal";
 
 export type InvitationAddress = {
   street: string | null;
@@ -19,6 +20,7 @@ export type InvitationRow = {
   save_the_date_sent: boolean;
   guest_from: GuestFrom | null;
   category: InvitationCategory | null;
+  message: string | null;
 } & InvitationAddress;
 
 export type GuestRow = {
@@ -30,8 +32,25 @@ export type GuestRow = {
   attending: boolean | null;
   dietary_restrictions: DietaryRestriction | null;
   additional_dietary_restrictions: string | null;
-  companion_name: string | null;
+  companion_of_guest_id: number | null;
+  guest_type: GuestType;
   created_at: string | null;
+};
+
+export type GuestRsvpPayload = {
+  id: number;
+  attending: boolean;
+  dietary_restrictions: string | null;
+  additional_dietary_restrictions: string | null;
+};
+
+export type CompanionPayload = {
+  id?: number;
+  first_name: string | null;
+  last_name: string | null;
+  attending: boolean;
+  dietary_restrictions: string | null;
+  additional_dietary_restrictions: string | null;
 };
 
 export type ResponseLogRow = {
@@ -85,14 +104,16 @@ export type Database = {
           save_the_date_sent?: boolean;
           guest_from?: GuestFrom | null;
           category?: InvitationCategory | null;
+          message?: string | null;
         } & Partial<InvitationAddress>;
         Update: Partial<Omit<InvitationRow, "id">>;
         Relationships: [];
       };
       guest: {
         Row: GuestRow;
-        Insert: Omit<GuestRow, "id" | "created_at"> & {
+        Insert: Omit<GuestRow, "id" | "created_at" | "companion_of_guest_id"> & {
           created_at?: string | null;
+          companion_of_guest_id?: number | null;
         };
         Update: Partial<Omit<GuestRow, "id">>;
         Relationships: [
@@ -101,6 +122,13 @@ export type Database = {
             columns: ["invitation_id"];
             isOneToOne: false;
             referencedRelation: "invitation";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "guest_companion_of_guest_id_fkey";
+            columns: ["companion_of_guest_id"];
+            isOneToOne: true;
+            referencedRelation: "guest";
             referencedColumns: ["id"];
           },
         ];
@@ -154,7 +182,7 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
-      get_guest_by_invitation_code: {
+      get_guests_by_invitation_code: {
         Args: {
           provided_code: string;
         };
@@ -166,16 +194,22 @@ export type Database = {
           | "attending"
           | "dietary_restrictions"
           | "additional_dietary_restrictions"
-          | "companion_name"
+          | "companion_of_guest_id"
         >[];
       };
-      update_guest_rsvp: {
+      get_invitation_message: {
         Args: {
           provided_code: string;
-          provided_attending: boolean;
-          provided_dietary_restrictions?: DietaryRestriction | null;
-          provided_companion_name?: string | null;
-          provided_additional_dietary_restrictions?: string | null;
+        };
+        Returns: string | null;
+      };
+      save_invitation_rsvp: {
+        Args: {
+          provided_code: string;
+          provided_guests: GuestRsvpPayload[];
+          provided_companion?: CompanionPayload | null;
+          provided_remove_companion_id?: number | null;
+          provided_message?: string | null;
         };
         Returns: boolean;
       };
